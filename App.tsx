@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { initializePyodide, calculateExpression } from './services/pyodideService';
 import { CalculatorMode, CalculationResult, OutputUnit, HistoryItem } from './types';
@@ -5,11 +6,12 @@ import { SECRET_PHRASES, OUTPUT_UNITS } from './constants';
 import Keypad from './components/Keypad';
 import SettingsModal from './components/SettingsModal';
 import HistoryModal from './components/HistoryModal';
+import DebugModal from './components/DebugModal';
 
 const App: React.FC = () => {
   // --- STATE ---
   const [input, setInput] = useState('');
-  const [result, setResult] = useState<CalculationResult>({ mixed: '—', improper: '—', decimal: '—', isError: false });
+  const [result, setResult] = useState<CalculationResult>({ mixed: '—', improper: '—', decimal: '—', isError: false, debugSteps: [] });
   const [loading, setLoading] = useState(true);
   
   // Modes
@@ -17,6 +19,8 @@ const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<'mixed'|'improper'|'decimal'>('mixed');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isDebugOpen, setIsDebugOpen] = useState(false);
+  const [showDebugIcon, setShowDebugIcon] = useState(false); // Hidden by default
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [showToast, setShowToast] = useState(false);
   
@@ -38,6 +42,7 @@ const App: React.FC = () => {
   // Refs
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const secretBuffer = useRef('');
+  const prevInputLen = useRef(0);
 
   // --- INIT ---
   useEffect(() => {
@@ -69,17 +74,12 @@ const App: React.FC = () => {
   // --- CALCULATION LOGIC ---
   const handleCalculate = useCallback(async () => {
     if (!input.trim()) {
-      setResult({ mixed: '—', improper: '—', decimal: '—', isError: false });
+      setResult({ mixed: '—', improper: '—', decimal: '—', isError: false, debugSteps: [] });
       return;
     }
     const res = await calculateExpression(input, mode, outputUnit, precisionEnabled, precisionDenom);
     setResult(res);
 
-    // Save to History (only if triggered manually via Enter/=)
-    // NOTE: This callback is reused for auto-recalc on unit change, so we might duplicate history if not careful.
-    // However, for simplicity, we allow it here. If strict "only new calculations" is needed, we'd separate the logic.
-    // To prevent spamming history on Unit Change, we can check if the result is different or just update the current view.
-    // For now, we will add to history to allow user to see "Same expression = New Unit Result".
     if (!res.isError) {
         setHistory(prev => {
             if (prev.length > 0 && prev[0].input === input.trim() && prev[0].result.mixed === res.mixed) return prev;
@@ -96,38 +96,92 @@ const App: React.FC = () => {
   // Auto-calculate when Output Unit changes (if input exists)
   useEffect(() => {
     if (input.trim() && mode === 'advanced') {
-      // Create a debounce or just direct call. Direct call is fine for select change.
-      // We don't want to add to history every time unit changes? 
-      // Actually, typically we just want to update the view.
-      // Let's call calculateExpression directly to update result WITHOUT adding to history.
       const runCalc = async () => {
           const res = await calculateExpression(input, mode, outputUnit, precisionEnabled, precisionDenom);
           setResult(res);
       };
       runCalc();
     }
-  }, [outputUnit, precisionEnabled, precisionDenom]); // Recalc on config change
+  }, [outputUnit, precisionEnabled, precisionDenom]); 
 
   // --- SECRET PHRASES ---
   useEffect(() => {
-    const checkSecrets = (char: string) => {
-      if (/[a-zA-Z]/.test(char)) {
-        secretBuffer.current = (secretBuffer.current + char.toLowerCase()).slice(-20);
-        for (const [phrase, secretRes] of Object.entries(SECRET_PHRASES)) {
-          if (secretBuffer.current.endsWith(phrase)) {
-             setResult({
-               mixed: secretRes.mixed,
-               improper: secretRes.mixed,
-               decimal: secretRes.decimal,
-               isError: false
-             });
-             secretBuffer.current = '';
-             return;
-          }
+    // Check if input grew
+    if (input.length > prevInputLen.current) {
+        const newChars = input.slice(prevInputLen.current);
+        
+        for (const char of newChars) {
+            // Append only alphabet or space for detection
+            if (/[a-zA-Z\s]/.test(char)) {
+                secretBuffer.current = (secretBuffer.current + char.toLowerCase()).slice(-30);
+            } else {
+                // If a symbol is typed, it acts as a delimiter, effectively resetting word detection
+                // We keep buffer for multi-word phrases, but a symbol usually breaks a word.
+                // For simplicity, we just append a space to the buffer to act as boundary if needed, 
+                // or do nothing. Let's append a non-alpha placeholder to break words if desired, 
+                // but usually user types "debugshow" directly.
+                // Actually, just leaving it alone is fine, but "1ftdebugshow" should probably not trigger.
+                // Let's rely on the Word Boundary Logic below.
+            }
         }
-      }
-    };
-    if (input.length > 0) checkSecrets(input[input.length - 1]);
+
+        const trimmedBuffer = secretBuffer.current.trimEnd();
+
+        for (const [phrase, secretRes] of Object.entries(SECRET_PHRASES)) {
+            let matched = false;
+            
+            // Check match at end of buffer
+            if (secretBuffer.current.endsWith(phrase)) {
+                matched = true;
+            } else if (trimmedBuffer.endsWith(phrase)) {
+                matched = true;
+            }
+
+            if (matched) {
+                // WORD BOUNDARY CHECK
+                // We must ensure the character BEFORE the phrase is not a letter.
+                // Current Buffer: "...somethingphrase"
+                // Index of start of phrase in buffer:
+                const phraseIndex = secretBuffer.current.lastIndexOf(phrase);
+                // Check char before phraseIndex
+                const charBefore = phraseIndex > 0 ? secretBuffer.current[phraseIndex - 1] : null;
+
+                // If charBefore is a letter, it's inside another word (e.g. "this" ends with "hi") -> IGNORE
+                if (charBefore && /[a-z]/.test(charBefore)) {
+                    continue; 
+                }
+
+                // If special command
+                if (phrase === 'debugshow') {
+                    setShowDebugIcon(true);
+                    secretBuffer.current = ''; 
+                    prevInputLen.current = input.length;
+                    // Also show a toast/result to confirm?
+                    setResult({
+                        mixed: secretRes.message,
+                        improper: secretRes.message,
+                        decimal: secretRes.message,
+                        isError: false,
+                        debugSteps: []
+                    });
+                    return;
+                }
+
+                // Standard Secret
+                setResult({
+                    mixed: secretRes.message,
+                    improper: secretRes.message,
+                    decimal: secretRes.message,
+                    isError: false,
+                    debugSteps: []
+                });
+                secretBuffer.current = '';
+                prevInputLen.current = input.length;
+                return;
+            }
+        }
+    }
+    prevInputLen.current = input.length;
   }, [input]);
 
   // --- HANDLERS ---
@@ -136,7 +190,7 @@ const App: React.FC = () => {
   };
   const handleClear = () => {
     setInput('');
-    setResult({ mixed: '—', improper: '—', decimal: '—', isError: false });
+    setResult({ mixed: '—', improper: '—', decimal: '—', isError: false, debugSteps: [] });
     secretBuffer.current = '';
   };
   const handleBackspace = () => setInput(prev => prev.slice(0, -1));
@@ -250,6 +304,19 @@ const App: React.FC = () => {
         </div>
         
         <div className="flex items-center gap-2">
+            
+            {showDebugIcon && (
+                <button 
+                    onClick={() => setIsDebugOpen(true)}
+                    className="p-2 text-yellow-600 hover:text-yellow-800 dark:text-yellow-400 dark:hover:text-yellow-200 transition-colors bg-yellow-100 dark:bg-yellow-900/30 rounded-lg animate-in fade-in zoom-in"
+                    title="Debug Steps"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                        <path d="M5.625 3.75a2.625 2.625 0 100 5.25h12.75a2.625 2.625 0 000-5.25H5.625zM3.75 11.25a.75.75 0 000 1.5h16.5a.75.75 0 000-1.5H3.75zM3 15.75a.75.75 0 01.75-.75h16.5a.75.75 0 010 1.5H3.75a.75.75 0 01-.75-.75zM3.75 18.75a.75.75 0 000 1.5h16.5a.75.75 0 000-1.5H3.75z" />
+                    </svg>
+                </button>
+            )}
+
              <button 
                 onClick={() => setIsHistoryOpen(true)}
                 className="p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors bg-slate-200 dark:bg-slate-900 rounded-lg"
@@ -354,7 +421,11 @@ const App: React.FC = () => {
                 onKeyDown={handleKeyDown}
                 readOnly={false}
                 placeholder={mode === 'basic' ? "3/4 + 1/2" : "1ft 6in + 20cm"}
-                className="w-full bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-lg font-mono text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-700 outline-none focus:border-blue-500/50 transition-colors resize-none"
+                className={`w-full bg-white dark:bg-slate-900/50 border rounded-xl px-4 py-3 text-lg font-mono placeholder-slate-400 dark:placeholder-slate-700 outline-none transition-colors resize-none ${
+                    result.isError 
+                    ? 'border-red-500 text-red-500 focus:border-red-500 focus:ring-1 focus:ring-red-500' 
+                    : 'border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 focus:border-blue-500/50'
+                }`}
                 rows={1}
             />
         </div>
@@ -392,6 +463,12 @@ const App: React.FC = () => {
         onCopy={handleHistoryCopy}
         onClearHistory={() => setHistory([])}
         renderFraction={renderFraction}
+      />
+
+      <DebugModal
+        isOpen={isDebugOpen}
+        onClose={() => setIsDebugOpen(false)}
+        steps={result.debugSteps || []}
       />
       
       {/* --- TOAST --- */}

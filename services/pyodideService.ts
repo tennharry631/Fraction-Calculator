@@ -1,3 +1,4 @@
+
 import { PYTHON_CALCULATOR_SCRIPT } from '../constants';
 import { CalculationResult, CalculatorMode, OutputUnit } from '../types';
 
@@ -55,22 +56,24 @@ export const calculateExpression = async (
     const resultProxy = await window.pyodide.runPythonAsync(code);
     const resultArray = resultProxy.toJs();
     
-    // Python returns: (mixed, improper, decimal)
+    // Python returns: (mixed, improper, decimal, debug_steps_array)
     const mixed = resultArray[0];
     const improper = resultArray[1];
     const decimal = resultArray[2];
+    const debugSteps = resultArray[3] || [];
 
     if (mixed === "Error") {
-      return { mixed, improper, decimal, isError: true };
+      return { mixed, improper, decimal, isError: true, debugSteps };
     }
 
-    return { mixed, improper, decimal, isError: false };
+    return { mixed, improper, decimal, isError: false, debugSteps };
   } catch (error) {
     return {
       mixed: "Error",
       improper: "Error",
       decimal: error instanceof Error ? error.message : "Unknown error",
       isError: true,
+      debugSteps: ["Critical JS Error calling Python: " + (error instanceof Error ? error.message : String(error))]
     };
   }
 };

@@ -1,3 +1,4 @@
+
 export interface PyodideInterface {
   runPython: (code: string) => any;
   runPythonAsync: (code: string) => Promise<any>;
@@ -18,13 +19,13 @@ export interface CalculationResult {
   improper: string;
   decimal: string;
   isError: boolean;
+  debugSteps?: string[];
 }
 
 export type OutputUnit = 'Meter' | 'Centimeter' | 'Millimeter' | 'Inch' | 'Feet' | 'Feet-In';
 
 export interface SecretPhrase {
-  mixed: string;
-  decimal: string;
+  message: string;
 }
 
 export interface HistoryItem {
