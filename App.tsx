@@ -274,12 +274,16 @@ const App: React.FC = () => {
   };
 
   const getActiveResult = () => {
-      if (result.isError) return result.decimal; // Error msg stored in decimal field
+      if (result.isError) return result.decimal;
+      
+      let val;
       switch(viewMode) {
-          case 'mixed': return result.mixed;
-          case 'improper': return result.improper;
-          case 'decimal': return result.decimal;
+          case 'mixed': val = result.mixed; break;
+          case 'improper': val = result.improper; break;
+          case 'decimal': val = result.decimal; break;
       }
+      
+      return val === '—' ? '0' : val;
   };
 
   if (loading) {
@@ -298,8 +302,9 @@ const App: React.FC = () => {
       <div className="flex justify-between items-center px-4 py-2 z-10 shrink-0">
         <div className="flex flex-col">
             <h1 className="text-base font-bold tracking-tight text-slate-900 dark:text-slate-100">Fraction Calc Pro</h1>
-            <button onClick={() => setMode(m => m === 'basic' ? 'advanced' : 'basic')} className="text-left text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest">
+            <button onClick={() => setMode(m => m === 'basic' ? 'advanced' : 'basic')} className="text-left text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest flex items-center gap-1.5 group">
                 {mode} Mode 
+                <span className="text-[10px] normal-case tracking-normal text-slate-400 dark:text-slate-600 font-medium group-hover:text-blue-500 transition-colors">(tap to switch)</span>
             </button>
         </div>
         
@@ -439,6 +444,7 @@ const App: React.FC = () => {
           onCalculate={handleCalculate}
           onBackspace={handleBackspace}
           mode={mode}
+          hasInput={input.length > 0}
         />
       </div>
 
