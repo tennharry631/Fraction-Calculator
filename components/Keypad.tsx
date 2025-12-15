@@ -41,7 +41,7 @@ const Keypad: React.FC<KeypadProps> = ({ onInsert, onClear, onCalculate, onBacks
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9.75L14.25 12m0 0l2.25 2.25M14.25 12l2.25-2.25M14.25 12l-2.25 2.25m-4.288-2.422l.722-.722a.75.75 0 01.53-.22h6.75a.75.75 0 01.75.75v6.75a.75.75 0 01-.75.75h-6.75a.75.75 0 01-.53-.22l-3.375-3.375a.75.75 0 010-1.06l3.375-3.375z" />
           </svg>
         </button>
-        <button onClick={() => onInsert('%')} className={actionBtn}>%</button>
+        <button onClick={() => onInsert('()')} className={actionBtn}>()</button>
         <button onClick={() => onInsert('/')} className={opBtn}>/</button>
 
         {/* Row 2 */}
