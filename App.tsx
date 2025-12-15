@@ -420,7 +420,7 @@ const App: React.FC = () => {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 readOnly={false}
-                placeholder={mode === 'basic' ? "3/4 + 1/2" : "1ft 6in + 20cm"}
+                placeholder={mode === 'basic' ? "Try: 3/4 + 1/2" : "Try: 1ft 6in + 20cm"}
                 className={`w-full bg-white dark:bg-slate-900/50 border rounded-xl px-4 py-3 text-lg font-mono placeholder-slate-400 dark:placeholder-slate-700 outline-none transition-colors resize-none ${
                     result.isError 
                     ? 'border-red-500 text-red-500 focus:border-red-500 focus:ring-1 focus:ring-red-500' 
